@@ -66,7 +66,7 @@ class CaptchaApp:
         site_combo = ttk.Combobox(
             card,
             textvariable=self.site_var,
-            values=["mmoocode.shop", "go99code.store"],
+            values=["mmoocode.shop", "go99code.store", "tt88code.win"],
             state="readonly",
             width=18,
         )
@@ -86,7 +86,7 @@ class CaptchaApp:
         promo_entry = ttk.Entry(card, textvariable=self.promo_var, width=20)
 
         self.run_both_var = tk.BooleanVar(value=False)
-        run_both_chk = ttk.Checkbutton(card, text="Chạy cả 2 trang", variable=self.run_both_var)
+        run_both_chk = ttk.Checkbutton(card, text="Chạy tất cả trang", variable=self.run_both_var)
 
         bg_btn = ttk.Button(card, text="Chọn ảnh nền…", command=self._select_bg_image)
         self.start_btn = ttk.Button(card, text="Bắt đầu", command=self._start)
@@ -239,10 +239,12 @@ class CaptchaApp:
         promo_code = self.promo_var.get().strip() or "TAIAPP"
         run_both = bool(self.run_both_var.get())
 
-        domains_to_run: list[str] = [selected_domain]
-        other_domain = "go99code.store" if selected_domain == "mmoocode.shop" else "mmoocode.shop"
-        if run_both and other_domain not in domains_to_run:
-            domains_to_run.append(other_domain)
+        supported_domains: list[str] = [
+            "mmoocode.shop",
+            "go99code.store",
+            "tt88code.win",
+        ]
+        domains_to_run: list[str] = supported_domains if run_both else [selected_domain]
 
         # Lazy import heavy/external deps inside thread
         try:
@@ -290,24 +292,25 @@ class CaptchaApp:
         def extract_nonces_with_fallback(client, base_url: str, html: str) -> tuple[str | None, str | None]:
             candidates: list[str] = []
             patterns = [
-                r"ajax\\.php'\s*;\s*const\s+nonce=['\"]([A-Za-z0-9]+)['\"]",
+                r"ajax\.php'\s*;\s*const\s+nonce=['\"]([A-Za-z0-9]+)['\"]",
                 r"const\s+nonce=['\"]([A-Za-z0-9]+)['\"]",
                 r"nonce\s*[:=]\s*['\"]([A-Za-z0-9]+)['\"]",
-                r"\\\"nonce\\\"\s*:\s*\\\"([A-Za-z0-9]+)\\\"",
+                r"\"nonce\"\s*:\s*\"([A-Za-z0-9]+)\"",
             ]
             for pat in patterns:
                 for val in re.findall(pat, html):
                     if val not in candidates:
                         candidates.append(val)
             if len(candidates) < 2:
-                script_srcs = re.findall(r"<script[^>]+src=['\"]([^'\"]+\.js)["']", html, flags=re.IGNORECASE)
+                script_srcs = re.findall(r"<script[^>]+src=['\"]([^'\"]+\.js)['\"]", html, flags=re.IGNORECASE)
                 seen: set[str] = set()
+                base_netloc = urlparse(base_url).netloc
                 for src in script_srcs[:10]:  # limit
                     js_url = urljoin(base_url + '/', src)
                     # Same-origin only
                     try:
                         parsed = urlparse(js_url)
-                        if parsed.netloc and parsed.netloc not in base_url:
+                        if parsed.netloc and parsed.netloc != base_netloc:
                             continue
                     except Exception:
                         pass
@@ -322,10 +325,10 @@ class CaptchaApp:
                         for val in re.findall(pat, js_body):
                             if val not in candidates:
                                 candidates.append(val)
+                            if len(candidates) >= 2:
+                                break
                         if len(candidates) >= 2:
                             break
-                    if len(candidates) >= 2:
-                        break
             if not candidates:
                 return None, None
             if len(candidates) == 1:
@@ -370,8 +373,14 @@ class CaptchaApp:
 
                 nonce1, nonce2 = extract_nonces_with_fallback(client, base_url, home_html)
                 if not nonce1 or not nonce2:
-                    self._log("Không trích xuất được nonce. Có thể giao diện trang đã thay đổi.")
-                    continue
+                    if domain == "tt88code.win":
+                        # Fallback nonces from provided site script
+                        nonce1 = nonce1 or "7bb988d5ca"  # get_promo_verification_type
+                        nonce2 = nonce2 or "2279debe40"  # generate/verify audio captcha
+                        self._log("Dùng nonce fallback cho tt88code.win.")
+                    else:
+                        self._log("Không trích xuất được nonce. Có thể giao diện trang đã thay đổi.")
+                        continue
 
                 self._log(f"nonce1={nonce1}")
                 self._log(f"nonce2={nonce2}")
