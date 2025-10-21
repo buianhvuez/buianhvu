@@ -8,7 +8,7 @@ import string
 import traceback
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 # Optional Pillow import for background images
 try:
@@ -85,6 +85,9 @@ class CaptchaApp:
         self.promo_var = tk.StringVar(value="TAIAPP")
         promo_entry = ttk.Entry(card, textvariable=self.promo_var, width=20)
 
+        self.run_both_var = tk.BooleanVar(value=False)
+        run_both_chk = ttk.Checkbutton(card, text="Chạy cả 2 trang", variable=self.run_both_var)
+
         bg_btn = ttk.Button(card, text="Chọn ảnh nền…", command=self._select_bg_image)
         self.start_btn = ttk.Button(card, text="Bắt đầu", command=self._start)
         self.stop_btn = ttk.Button(card, text="Dừng", command=self._stop, state=tk.DISABLED)
@@ -108,6 +111,7 @@ class CaptchaApp:
         bg_btn.grid(row=6, column=0, sticky="w", pady=(12, 0))
         self.start_btn.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
         self.stop_btn.grid(row=6, column=2, sticky="w", padx=(8, 0), pady=(12, 0))
+        run_both_chk.grid(row=7, column=0, sticky="w", pady=(4, 0))
 
         # A little padding
         for child in card.winfo_children():
@@ -228,12 +232,17 @@ class CaptchaApp:
         self.stop_btn.configure(state=tk.DISABLED)
 
     def _run_flow(self) -> None:
-        """Run the captcha workflow in a background thread."""
+        """Run the captcha workflow in a background thread. Can run both domains sequentially."""
         username = self.username_var.get().strip()
         lang = self.lang_var.get().strip() or "vi-VN"
-        domain = (self.site_var.get().strip() or "mmoocode.shop").replace("https://", "").replace("http://", "").strip("/")
-        base_url = f"https://{domain}"
+        selected_domain = (self.site_var.get().strip() or "mmoocode.shop").replace("https://", "").replace("http://", "").strip("/")
         promo_code = self.promo_var.get().strip() or "TAIAPP"
+        run_both = bool(self.run_both_var.get())
+
+        domains_to_run: list[str] = [selected_domain]
+        other_domain = "go99code.store" if selected_domain == "mmoocode.shop" else "mmoocode.shop"
+        if run_both and other_domain not in domains_to_run:
+            domains_to_run.append(other_domain)
 
         # Lazy import heavy/external deps inside thread
         try:
@@ -278,169 +287,236 @@ class CaptchaApp:
                         os.remove(temp_name)
                 except Exception:
                     pass
+        def extract_nonces_with_fallback(client, base_url: str, html: str) -> tuple[str | None, str | None]:
+            candidates: list[str] = []
+            patterns = [
+                r"ajax\\.php'\s*;\s*const\s+nonce=['\"]([A-Za-z0-9]+)['\"]",
+                r"const\s+nonce=['\"]([A-Za-z0-9]+)['\"]",
+                r"nonce\s*[:=]\s*['\"]([A-Za-z0-9]+)['\"]",
+                r"\\\"nonce\\\"\s*:\s*\\\"([A-Za-z0-9]+)\\\"",
+            ]
+            for pat in patterns:
+                for val in re.findall(pat, html):
+                    if val not in candidates:
+                        candidates.append(val)
+            if len(candidates) < 2:
+                script_srcs = re.findall(r"<script[^>]+src=['\"]([^'\"]+\.js)["']", html, flags=re.IGNORECASE)
+                seen: set[str] = set()
+                for src in script_srcs[:10]:  # limit
+                    js_url = urljoin(base_url + '/', src)
+                    # Same-origin only
+                    try:
+                        parsed = urlparse(js_url)
+                        if parsed.netloc and parsed.netloc not in base_url:
+                            continue
+                    except Exception:
+                        pass
+                    if js_url in seen:
+                        continue
+                    seen.add(js_url)
+                    try:
+                        js_body = client.get(js_url, timeout=15).text
+                    except Exception:
+                        continue
+                    for pat in patterns:
+                        for val in re.findall(pat, js_body):
+                            if val not in candidates:
+                                candidates.append(val)
+                        if len(candidates) >= 2:
+                            break
+                    if len(candidates) >= 2:
+                        break
+            if not candidates:
+                return None, None
+            if len(candidates) == 1:
+                return candidates[0], candidates[0]
+            return candidates[0], candidates[1]
 
         try:
-            if check_stop():
-                self._finalize_buttons()
-                return
+            for domain in domains_to_run:
+                if check_stop():
+                    break
 
-            # Prepare session
-            client = requests.Session()
-            client.headers.update({
-                'Host': domain,
-                'sec-ch-ua-platform': '"Windows"',
-                'x-requested-with': 'XMLHttpRequest',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
-                'accept': 'application/json, text/javascript, */*; q=0.01',
-                'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-                'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'sec-ch-ua-mobile': '?0',
-                'origin': base_url,
-                'sec-fetch-site': 'same-origin',
-                'sec-fetch-mode': 'cors',
-                'sec-fetch-dest': 'empty',
-                'referer': base_url + '/',
-                'accept-language': 'vi',
-                'priority': 'u=1, i',
-            })
+                base_url = f"https://{domain}"
+                self._log(f"--- Chạy cho: {domain} ---")
 
-            # 1) Get nonce values from homepage
-            self._log("Đang lấy nonce…")
-            home_html = client.get(base_url + '/', timeout=25).text
-
-            def extract_nonces(html: str) -> tuple[str | None, str | None]:
-                # Pattern 1: specific "ajax.php'; const nonce='XXXX'"
-                m1 = re.findall(r"ajax\\.php'\s*;\s*const\s+nonce='([A-Za-z0-9]+)'", html)
-                # Pattern 2: general const nonce='XXXX'
-                m_all = re.findall(r"const\s+nonce='([A-Za-z0-9]+)'", html)
-                nonce_first = m1[0] if m1 else (m_all[0] if m_all else None)
-                nonce_second = None
-                if m_all:
-                    # Pick the first different value if available; else reuse
-                    for val in m_all:
-                        if val != nonce_first:
-                            nonce_second = val
-                            break
-                if nonce_second is None:
-                    nonce_second = nonce_first
-                return nonce_first, nonce_second
-
-            nonce1, nonce2 = extract_nonces(home_html)
-            if not nonce1 or not nonce2:
-                self._log("Không trích xuất được nonce. Có thể giao diện trang đã thay đổi.")
-                self._finalize_buttons()
-                return
-
-            self._log(f"nonce1={nonce1}")
-            self._log(f"nonce2={nonce2}")
-
-            if check_stop():
-                self._finalize_buttons()
-                return
-
-            # 2) Call taiApp
-            self._log("Gọi get_promo_verification_type…")
-            ta = client.post(
-                f'{base_url}/wp-admin/admin-ajax.php',
-                data={
-                    'action': 'get_promo_verification_type',
-                    'ma_khuyen_mai': promo_code,
-                    'nonce': nonce1,
-                },
-                timeout=20,
-            ).text
-            self._log(f"KQ taiApp: {ta}")
-
-            if check_stop():
-                self._finalize_buttons()
-                return
-
-            # 3) Request audio captcha URL
-            self._log("Yêu cầu audio captcha…")
-            payload = {
-                'action': 'generate_audio_captcha',
-                'nonce': nonce2,
-                'form_data': json.dumps({
-                    "ten_tai_khoan": username,
-                    "ma_khuyen_mai": promo_code,
-                    "captcha": ""
+                # Prepare session
+                client = requests.Session()
+                client.headers.update({
+                    'Host': domain,
+                    'sec-ch-ua-platform': '"Windows"',
+                    'x-requested-with': 'XMLHttpRequest',
+                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+                    'accept': 'application/json, text/javascript, */*; q=0.01',
+                    'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+                    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'sec-ch-ua-mobile': '?0',
+                    'origin': base_url,
+                    'sec-fetch-site': 'same-origin',
+                    'sec-fetch-mode': 'cors',
+                    'sec-fetch-dest': 'empty',
+                    'referer': base_url + '/',
+                    'accept-language': 'vi',
+                    'priority': 'u=1, i',
                 })
-            }
-            response = client.post(f'{base_url}/wp-admin/admin-ajax.php', data=payload, timeout=20)
-            audio_url = None
-            try:
-                res_json = response.json()
-                if res_json.get("success") and "data" in res_json and "audio_url" in res_json["data"]:
-                    audio_url = res_json["data"]["audio_url"].replace("\\/", "/")
-            except Exception:
-                pass
 
-            if not audio_url:
-                self._log("Không nhận được audio_url từ server.")
-                self._finalize_buttons()
-                return
+                # 1) Get nonce values from homepage (with fallbacks)
+                self._log("Đang lấy nonce…")
+                try:
+                    home_html = client.get(base_url + '/', timeout=25).text
+                except Exception as exc_home:
+                    self._log(f"Không truy cập được trang chủ: {exc_home}")
+                    continue
 
-            # Normalize audio URL to absolute
-            if not audio_url.startswith("http://") and not audio_url.startswith("https://"):
-                audio_url = urljoin(base_url + '/', audio_url.lstrip('/'))
-            self._log(f"audio_url: {audio_url}")
+                nonce1, nonce2 = extract_nonces_with_fallback(client, base_url, home_html)
+                if not nonce1 or not nonce2:
+                    self._log("Không trích xuất được nonce. Có thể giao diện trang đã thay đổi.")
+                    continue
 
-            if check_stop():
-                self._finalize_buttons()
-                return
+                self._log(f"nonce1={nonce1}")
+                self._log(f"nonce2={nonce2}")
 
-            # 4) STT to digits
-            self._log("Đang nhận dạng giọng nói…")
-            code = speech_to_text_from_url(audio_url, speech_lang=lang, session=client)
-            self._log(f"Mã nhận dạng: {code}")
-            if not code:
-                self._log("Không nhận dạng được mã captcha.")
-                self._finalize_buttons()
-                return
+                if check_stop():
+                    break
 
-            if check_stop():
-                self._finalize_buttons()
-                return
+                # 2) Call taiApp
+                self._log("Gọi get_promo_verification_type…")
+                try:
+                    ta = client.post(
+                        f'{base_url}/wp-admin/admin-ajax.php',
+                        data={
+                            'action': 'get_promo_verification_type',
+                            'ma_khuyen_mai': promo_code,
+                            'nonce': nonce1,
+                        },
+                        timeout=20,
+                    ).text
+                    self._log(f"KQ taiApp: {ta}")
+                except Exception as exc_ta:
+                    self._log(f"Lỗi gọi get_promo_verification_type: {exc_ta}")
+                    continue
 
-            # 5) Verify audio captcha
-            self._log("Xác minh mã captcha…")
-            verify_res = client.post(
-                f'{base_url}/wp-admin/admin-ajax.php',
-                data={
-                    'action': 'verify_audio_captcha',
+                if check_stop():
+                    break
+
+                # 3) Request audio captcha URL
+                self._log("Yêu cầu audio captcha…")
+                payload = {
+                    'action': 'generate_audio_captcha',
                     'nonce': nonce2,
-                    'captcha_input': code,
-                },
-                timeout=20,
-            ).text
-            self._log(f"KQ verify: {verify_res}")
+                    'form_data': json.dumps({
+                        "ten_tai_khoan": username,
+                        "ma_khuyen_mai": promo_code,
+                        "captcha": ""
+                    })
+                }
+                try:
+                    response = client.post(f'{base_url}/wp-admin/admin-ajax.php', data=payload, timeout=20)
+                except Exception as exc_cap:
+                    self._log(f"Lỗi yêu cầu audio captcha: {exc_cap}")
+                    continue
 
-            if check_stop():
-                self._finalize_buttons()
-                return
+                audio_url = None
+                try:
+                    res_json = response.json()
+                    if res_json.get("success") and "data" in res_json and "audio_url" in res_json["data"]:
+                        audio_url = res_json["data"]["audio_url"].replace("\\/", "/")
+                except Exception:
+                    pass
 
-            # 6) Final form submit
-            self._log("Gửi form cuối…")
-            final_res = client.post(
-                base_url + '/',
-                data={
-                    'ten_tai_khoan': username,
-                    'ma_khuyen_mai': promo_code,
-                    'captcha': '',
-                },
-                timeout=20,
-            ).text
-            try:
-                final_msg = final_res.split("showFormError")[1].split(";")[0]
-            except Exception:
-                final_msg = final_res[:300] + ("…" if len(final_res) > 300 else "")
-            self._log(f"KQ cuối: {final_msg}")
+                if not audio_url:
+                    self._log("Không nhận được audio_url từ server.")
+                    self.root.after(0, lambda: messagebox.showerror("Lỗi", "Không nhận được audio_url từ server. Có thể tên tài khoản hoặc mã khuyến mãi không hợp lệ."))
+                    continue
+
+                # Normalize audio URL to absolute
+                if not audio_url.startswith("http://") and not audio_url.startswith("https://"):
+                    audio_url = urljoin(base_url + '/', audio_url.lstrip('/'))
+                self._log(f"audio_url: {audio_url}")
+
+                if check_stop():
+                    break
+
+                # 4) STT to digits
+                self._log("Đang nhận dạng giọng nói…")
+                code = speech_to_text_from_url(audio_url, speech_lang=lang, session=client)
+                self._log(f"Mã nhận dạng: {code}")
+                if not code:
+                    self._log("Không nhận dạng được mã captcha.")
+                    self.root.after(0, lambda: messagebox.showwarning("Lỗi", "Không nhận dạng được mã captcha từ audio."))
+                    continue
+
+                if check_stop():
+                    break
+
+                # 5) Verify audio captcha
+                self._log("Xác minh mã captcha…")
+                try:
+                    verify_res = client.post(
+                        f'{base_url}/wp-admin/admin-ajax.php',
+                        data={
+                            'action': 'verify_audio_captcha',
+                            'nonce': nonce2,
+                            'captcha_input': code,
+                        },
+                        timeout=20,
+                    ).text
+                except Exception as exc_ver:
+                    self._log(f"Lỗi verify captcha: {exc_ver}")
+                    continue
+                self._log(f"KQ verify: {verify_res}")
+
+                try:
+                    verify_json = json.loads(verify_res)
+                    if not verify_json.get("success"):
+                        msg = verify_json.get("data", {}).get("message", "Mã xác thực không đúng")
+                        self._log("Xác minh captcha thất bại.")
+                        self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Xác minh captcha thất bại: {msg}"))
+                        continue
+                except Exception:
+                    self._log("Không đọc được KQ verify, tiếp tục gửi form…")
+
+                if check_stop():
+                    break
+
+                # 6) Final form submit
+                self._log("Gửi form cuối…")
+                try:
+                    final_res = client.post(
+                        base_url + '/',
+                        data={
+                            'ten_tai_khoan': username,
+                            'ma_khuyen_mai': promo_code,
+                            'captcha': '',
+                        },
+                        timeout=20,
+                    ).text
+                except Exception as exc_fin:
+                    self._log(f"Lỗi gửi form cuối: {exc_fin}")
+                    continue
+
+                final_msg_clean = "Không trích xuất được thông báo."
+                try:
+                    m_err = re.search(r"showFormError\s*\(\s*['\"](.*?)['\"]\s*\)", final_res, re.DOTALL)
+                    m_succ = re.search(r"showFormSuccess\s*\(\s*['\"](.*?)['\"]\s*\)", final_res, re.DOTALL)
+                    if m_succ:
+                        final_msg_clean = f"THÀNH CÔNG: {m_succ.group(1)}"
+                        self.root.after(0, lambda: messagebox.showinfo("Thành công", m_succ.group(1)))
+                    elif m_err:
+                        final_msg_clean = f"LỖI: {m_err.group(1)}"
+                        self.root.after(0, lambda: messagebox.showerror("Lỗi", m_err.group(1)))
+                    else:
+                        final_msg_clean = final_res[:400] + ("…" if len(final_res) > 400 else "")
+                except Exception:
+                    final_msg_clean = final_res[:400] + ("…" if len(final_res) > 400 else "")
+                self._log(f"KQ cuối: {final_msg_clean}")
 
         except Exception as e:
             self._log("Đã xảy ra lỗi không mong muốn.")
             self._log(str(e))
-            tb = traceback.format_exc(limit=1)
+            tb = traceback.format_exc(limit=3)
             self._log(tb)
+            self.root.after(0, lambda: messagebox.showerror("Lỗi nghiêm trọng", str(e)))
         finally:
             self._finalize_buttons()
 
