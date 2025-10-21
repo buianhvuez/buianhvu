@@ -66,7 +66,14 @@ class CaptchaApp:
         site_combo = ttk.Combobox(
             card,
             textvariable=self.site_var,
-            values=["mmoocode.shop", "go99code.store", "tt88code.win"],
+            values=[
+                "mmoocode.shop",
+                "go99code.store",
+                "tt88code.win",
+                "nohucode.shop",
+                "789pcode.store",
+                "link1.789pcode.win",
+            ],
             state="readonly",
             width=18,
         )
@@ -87,6 +94,11 @@ class CaptchaApp:
 
         self.run_both_var = tk.BooleanVar(value=False)
         run_both_chk = ttk.Checkbutton(card, text="Chạy tất cả trang", variable=self.run_both_var)
+
+        # Proxy input
+        proxy_label = ttk.Label(card, text="Proxy (http(s)://user:pass@host:port):")
+        self.proxy_var = tk.StringVar(value="")
+        proxy_entry = ttk.Entry(card, textvariable=self.proxy_var, width=36)
 
         bg_btn = ttk.Button(card, text="Chọn ảnh nền…", command=self._select_bg_image)
         self.start_btn = ttk.Button(card, text="Bắt đầu", command=self._start)
@@ -112,6 +124,8 @@ class CaptchaApp:
         self.start_btn.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
         self.stop_btn.grid(row=6, column=2, sticky="w", padx=(8, 0), pady=(12, 0))
         run_both_chk.grid(row=7, column=0, sticky="w", pady=(4, 0))
+        proxy_label.grid(row=8, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        proxy_entry.grid(row=8, column=1, sticky="ew", pady=(8, 0))
 
         # A little padding
         for child in card.winfo_children():
@@ -232,17 +246,22 @@ class CaptchaApp:
         self.stop_btn.configure(state=tk.DISABLED)
 
     def _run_flow(self) -> None:
-        """Run the captcha workflow in a background thread. Can run both domains sequentially."""
+        """Run the captcha workflow in a background thread. Can run all supported domains sequentially."""
         username = self.username_var.get().strip()
         lang = self.lang_var.get().strip() or "vi-VN"
         selected_domain = (self.site_var.get().strip() or "mmoocode.shop").replace("https://", "").replace("http://", "").strip("/")
+        if selected_domain == "link1.789pcode.win":
+            selected_domain = "789pcode.store"
         promo_code = self.promo_var.get().strip() or "TAIAPP"
         run_both = bool(self.run_both_var.get())
+        proxy_url = self.proxy_var.get().strip() or None
 
         supported_domains: list[str] = [
             "mmoocode.shop",
             "go99code.store",
             "tt88code.win",
+            "nohucode.shop",
+            "789pcode.store",
         ]
         domains_to_run: list[str] = supported_domains if run_both else [selected_domain]
 
@@ -345,6 +364,14 @@ class CaptchaApp:
 
                 # Prepare session
                 client = requests.Session()
+                # Apply proxies if provided
+                if proxy_url:
+                    proxies = {"http": proxy_url, "https": proxy_url}
+                    try:
+                        client.proxies.update(proxies)
+                        self._log(f"Đang sử dụng proxy cho {domain}")
+                    except Exception as px:
+                        self._log(f"Không áp dụng được proxy: {px}")
                 client.headers.update({
                     'Host': domain,
                     'sec-ch-ua-platform': '"Windows"',
@@ -373,11 +400,19 @@ class CaptchaApp:
 
                 nonce1, nonce2 = extract_nonces_with_fallback(client, base_url, home_html)
                 if not nonce1 or not nonce2:
+                    # Fallback for known domains
                     if domain == "tt88code.win":
-                        # Fallback nonces from provided site script
-                        nonce1 = nonce1 or "7bb988d5ca"  # get_promo_verification_type
-                        nonce2 = nonce2 or "2279debe40"  # generate/verify audio captcha
+                        nonce1 = nonce1 or "7bb988d5ca"
+                        nonce2 = nonce2 or "2279debe40"
                         self._log("Dùng nonce fallback cho tt88code.win.")
+                    elif domain == "nohucode.shop":
+                        nonce1 = nonce1 or "6eb9a33928"
+                        nonce2 = nonce2 or "4043c812cf"
+                        self._log("Dùng nonce fallback cho nohucode.shop.")
+                    elif domain == "789pcode.store":
+                        nonce1 = nonce1 or "526f7b10f9"
+                        nonce2 = nonce2 or "158506ad59"
+                        self._log("Dùng nonce fallback cho 789pcode.store.")
                     else:
                         self._log("Không trích xuất được nonce. Có thể giao diện trang đã thay đổi.")
                         continue
