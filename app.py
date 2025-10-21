@@ -8,6 +8,7 @@ import string
 import traceback
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from urllib.parse import urljoin
 
 # Optional Pillow import for background images
 try:
@@ -60,6 +61,16 @@ class CaptchaApp:
         title = ttk.Label(card, text="Audio Captcha Helper", font=("Segoe UI", 18, "bold"))
         subtitle = ttk.Label(card, text="Thêm background UI + chạy quy trình captcha", font=("Segoe UI", 10))
 
+        site_label = ttk.Label(card, text="Trang:")
+        self.site_var = tk.StringVar(value="mmoocode.shop")
+        site_combo = ttk.Combobox(
+            card,
+            textvariable=self.site_var,
+            values=["mmoocode.shop", "go99code.store"],
+            state="readonly",
+            width=18,
+        )
+
         username_label = ttk.Label(card, text="Tên tài khoản:")
         self.username_var = tk.StringVar(value="quancaidu")
         username_entry = ttk.Entry(card, textvariable=self.username_var, width=30)
@@ -70,6 +81,10 @@ class CaptchaApp:
             "vi-VN", "en-US", "en-GB", "th-TH", "id-ID"
         ], state="readonly", width=12)
 
+        promo_label = ttk.Label(card, text="Mã khuyến mãi:")
+        self.promo_var = tk.StringVar(value="TAIAPP")
+        promo_entry = ttk.Entry(card, textvariable=self.promo_var, width=20)
+
         bg_btn = ttk.Button(card, text="Chọn ảnh nền…", command=self._select_bg_image)
         self.start_btn = ttk.Button(card, text="Bắt đầu", command=self._start)
         self.stop_btn = ttk.Button(card, text="Dừng", command=self._stop, state=tk.DISABLED)
@@ -78,15 +93,21 @@ class CaptchaApp:
         title.grid(row=0, column=0, columnspan=3, sticky="w")
         subtitle.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 12))
 
-        username_label.grid(row=2, column=0, sticky="w", padx=(0, 8))
-        username_entry.grid(row=2, column=1, sticky="ew", pady=4)
+        site_label.grid(row=2, column=0, sticky="w", padx=(0, 8))
+        site_combo.grid(row=2, column=1, sticky="w", pady=4)
 
-        lang_label.grid(row=3, column=0, sticky="w", padx=(0, 8))
-        lang_combo.grid(row=3, column=1, sticky="w", pady=4)
+        username_label.grid(row=3, column=0, sticky="w", padx=(0, 8))
+        username_entry.grid(row=3, column=1, sticky="ew", pady=4)
 
-        bg_btn.grid(row=4, column=0, sticky="w", pady=(12, 0))
-        self.start_btn.grid(row=4, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
-        self.stop_btn.grid(row=4, column=2, sticky="w", padx=(8, 0), pady=(12, 0))
+        lang_label.grid(row=4, column=0, sticky="w", padx=(0, 8))
+        lang_combo.grid(row=4, column=1, sticky="w", pady=4)
+
+        promo_label.grid(row=5, column=0, sticky="w", padx=(0, 8))
+        promo_entry.grid(row=5, column=1, sticky="w", pady=4)
+
+        bg_btn.grid(row=6, column=0, sticky="w", pady=(12, 0))
+        self.start_btn.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
+        self.stop_btn.grid(row=6, column=2, sticky="w", padx=(8, 0), pady=(12, 0))
 
         # A little padding
         for child in card.winfo_children():
@@ -210,6 +231,9 @@ class CaptchaApp:
         """Run the captcha workflow in a background thread."""
         username = self.username_var.get().strip()
         lang = self.lang_var.get().strip() or "vi-VN"
+        domain = (self.site_var.get().strip() or "mmoocode.shop").replace("https://", "").replace("http://", "").strip("/")
+        base_url = f"https://{domain}"
+        promo_code = self.promo_var.get().strip() or "TAIAPP"
 
         # Lazy import heavy/external deps inside thread
         try:
@@ -230,11 +254,12 @@ class CaptchaApp:
                 return True
             return False
 
-        def speech_to_text_from_url(url: str, speech_lang: str = "vi-VN") -> str | None:
+        def speech_to_text_from_url(url: str, speech_lang: str = "vi-VN", session=None) -> str | None:
             """Download audio from URL, extend tail, save to temp .wav, use Google Recognizer."""
             temp_name = "".join(random.choices(string.ascii_lowercase + string.digits, k=8)) + ".wav"
             try:
-                audio_bytes = requests.get(url, timeout=15).content
+                get_fn = (session.get if session is not None else requests.get)  # type: ignore[attr-defined]
+                audio_bytes = get_fn(url, timeout=20).content
                 y, sr_rate = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
                 # pad 1.3s of silence at end to avoid truncation
                 y = np.concatenate([y, np.zeros(int(1.3 * sr_rate))])
@@ -262,7 +287,7 @@ class CaptchaApp:
             # Prepare session
             client = requests.Session()
             client.headers.update({
-                'Host': 'mmoocode.shop',
+                'Host': domain,
                 'sec-ch-ua-platform': '"Windows"',
                 'x-requested-with': 'XMLHttpRequest',
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
@@ -270,22 +295,38 @@ class CaptchaApp:
                 'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
                 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'sec-ch-ua-mobile': '?0',
-                'origin': 'https://mmoocode.shop',
+                'origin': base_url,
                 'sec-fetch-site': 'same-origin',
                 'sec-fetch-mode': 'cors',
                 'sec-fetch-dest': 'empty',
-                'referer': 'https://mmoocode.shop/',
+                'referer': base_url + '/',
                 'accept-language': 'vi',
                 'priority': 'u=1, i',
             })
 
             # 1) Get nonce values from homepage
             self._log("Đang lấy nonce…")
-            home_html = client.get('https://mmoocode.shop/', timeout=20).text
-            try:
-                nonce1 = home_html.split("ajax.php';const nonce='")[1].split("'")[0]
-                nonce2 = home_html.split("';fetch(ajaxUrl")[1].split("const nonce='")[1]
-            except Exception:
+            home_html = client.get(base_url + '/', timeout=25).text
+
+            def extract_nonces(html: str) -> tuple[str | None, str | None]:
+                # Pattern 1: specific "ajax.php'; const nonce='XXXX'"
+                m1 = re.findall(r"ajax\\.php'\s*;\s*const\s+nonce='([A-Za-z0-9]+)'", html)
+                # Pattern 2: general const nonce='XXXX'
+                m_all = re.findall(r"const\s+nonce='([A-Za-z0-9]+)'", html)
+                nonce_first = m1[0] if m1 else (m_all[0] if m_all else None)
+                nonce_second = None
+                if m_all:
+                    # Pick the first different value if available; else reuse
+                    for val in m_all:
+                        if val != nonce_first:
+                            nonce_second = val
+                            break
+                if nonce_second is None:
+                    nonce_second = nonce_first
+                return nonce_first, nonce_second
+
+            nonce1, nonce2 = extract_nonces(home_html)
+            if not nonce1 or not nonce2:
                 self._log("Không trích xuất được nonce. Có thể giao diện trang đã thay đổi.")
                 self._finalize_buttons()
                 return
@@ -300,10 +341,10 @@ class CaptchaApp:
             # 2) Call taiApp
             self._log("Gọi get_promo_verification_type…")
             ta = client.post(
-                'https://mmoocode.shop/wp-admin/admin-ajax.php',
+                f'{base_url}/wp-admin/admin-ajax.php',
                 data={
                     'action': 'get_promo_verification_type',
-                    'ma_khuyen_mai': 'TAIAPP',
+                    'ma_khuyen_mai': promo_code,
                     'nonce': nonce1,
                 },
                 timeout=20,
@@ -321,11 +362,11 @@ class CaptchaApp:
                 'nonce': nonce2,
                 'form_data': json.dumps({
                     "ten_tai_khoan": username,
-                    "ma_khuyen_mai": "TAIAPP",
+                    "ma_khuyen_mai": promo_code,
                     "captcha": ""
                 })
             }
-            response = client.post('https://mmoocode.shop/wp-admin/admin-ajax.php', data=payload, timeout=20)
+            response = client.post(f'{base_url}/wp-admin/admin-ajax.php', data=payload, timeout=20)
             audio_url = None
             try:
                 res_json = response.json()
@@ -339,6 +380,9 @@ class CaptchaApp:
                 self._finalize_buttons()
                 return
 
+            # Normalize audio URL to absolute
+            if not audio_url.startswith("http://") and not audio_url.startswith("https://"):
+                audio_url = urljoin(base_url + '/', audio_url.lstrip('/'))
             self._log(f"audio_url: {audio_url}")
 
             if check_stop():
@@ -347,7 +391,7 @@ class CaptchaApp:
 
             # 4) STT to digits
             self._log("Đang nhận dạng giọng nói…")
-            code = speech_to_text_from_url(audio_url, speech_lang=lang)
+            code = speech_to_text_from_url(audio_url, speech_lang=lang, session=client)
             self._log(f"Mã nhận dạng: {code}")
             if not code:
                 self._log("Không nhận dạng được mã captcha.")
@@ -361,7 +405,7 @@ class CaptchaApp:
             # 5) Verify audio captcha
             self._log("Xác minh mã captcha…")
             verify_res = client.post(
-                'https://mmoocode.shop/wp-admin/admin-ajax.php',
+                f'{base_url}/wp-admin/admin-ajax.php',
                 data={
                     'action': 'verify_audio_captcha',
                     'nonce': nonce2,
@@ -378,10 +422,10 @@ class CaptchaApp:
             # 6) Final form submit
             self._log("Gửi form cuối…")
             final_res = client.post(
-                'https://mmoocode.shop/',
+                base_url + '/',
                 data={
                     'ten_tai_khoan': username,
-                    'ma_khuyen_mai': 'TAIAPP',
+                    'ma_khuyen_mai': promo_code,
                     'captcha': '',
                 },
                 timeout=20,
