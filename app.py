@@ -350,10 +350,32 @@ class CaptchaApp:
                 client = requests.Session()
                 # Apply proxies if provided
                 if proxy_url:
-                    proxies = {"http": proxy_url, "https": proxy_url}
                     try:
-                        client.proxies.update(proxies)
-                        self._log(f"Đang sử dụng proxy cho {domain}")
+                        # Parse proxy format: ip:port:username:password
+                        if ":" in proxy_url:
+                            parts = proxy_url.split(":")
+                            if len(parts) >= 2:
+                                ip = parts[0]
+                                port = parts[1]
+                                if len(parts) >= 4:
+                                    # Format: ip:port:username:password
+                                    username = parts[2]
+                                    password = parts[3]
+                                    proxy_url_formatted = f"http://{username}:{password}@{ip}:{port}"
+                                else:
+                                    # Format: ip:port
+                                    proxy_url_formatted = f"http://{ip}:{port}"
+                                
+                                proxies = {"http": proxy_url_formatted, "https": proxy_url_formatted}
+                                client.proxies.update(proxies)
+                                self._log(f"Đang sử dụng proxy cho {domain}: {ip}:{port}")
+                            else:
+                                self._log(f"Format proxy không hợp lệ: {proxy_url}")
+                        else:
+                            # Assume it's already in correct format
+                            proxies = {"http": proxy_url, "https": proxy_url}
+                            client.proxies.update(proxies)
+                            self._log(f"Đang sử dụng proxy cho {domain}")
                     except Exception as px:
                         self._log(f"Không áp dụng được proxy: {px}")
                 client.headers.update({
