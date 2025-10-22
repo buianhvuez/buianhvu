@@ -42,25 +42,25 @@ class CaptchaApp:
         self.content_frame = tk.Frame(self.main_container, bg="#f0f2f5")
         self.content_frame.pack(fill=tk.BOTH, expand=True)
         self.content_frame.grid_columnconfigure(0, weight=1)
-        self.content_frame.grid_columnconfigure(1, weight=1)
+        self.content_frame.grid_columnconfigure(1, weight=2)
 
         # Control panel with modern card design (left side)
         self.control_frame = tk.Frame(self.content_frame, bg="white", relief="flat", bd=0)
-        self.control_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.control_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 15))
         
         # Add subtle shadow effect
         self.shadow_frame = tk.Frame(self.content_frame, bg="#e0e0e0", height=2)
-        self.shadow_frame.grid(row=1, column=0, sticky="ew", padx=(0, 10), pady=(0, 13))
+        self.shadow_frame.grid(row=1, column=0, sticky="ew", padx=(0, 15), pady=(0, 13))
         
         self._build_controls(self.control_frame)
 
         # Logging panel with modern design (right side)
         self.log_frame = tk.Frame(self.content_frame, bg="white", relief="flat", bd=0)
-        self.log_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        self.log_frame.grid(row=0, column=1, sticky="nsew", padx=(15, 0))
         
         # Add shadow for log panel
         self.log_shadow = tk.Frame(self.content_frame, bg="#e0e0e0", height=2)
-        self.log_shadow.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=(0, 13))
+        self.log_shadow.grid(row=1, column=1, sticky="ew", padx=(15, 0), pady=(0, 13))
         
         self._build_log(self.log_frame)
 
