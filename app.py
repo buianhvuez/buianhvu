@@ -38,23 +38,29 @@ class CaptchaApp:
         self.main_container = tk.Frame(self.root, bg="#f0f2f5")
         self.main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        # Control panel with modern card design
-        self.control_frame = tk.Frame(self.main_container, bg="white", relief="flat", bd=0)
-        self.control_frame.pack(fill=tk.X, pady=(0, 15))
+        # Create horizontal layout container
+        self.content_frame = tk.Frame(self.main_container, bg="#f0f2f5")
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
+        self.content_frame.grid_columnconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(1, weight=1)
+
+        # Control panel with modern card design (left side)
+        self.control_frame = tk.Frame(self.content_frame, bg="white", relief="flat", bd=0)
+        self.control_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         
         # Add subtle shadow effect
-        self.shadow_frame = tk.Frame(self.main_container, bg="#e0e0e0", height=2)
-        self.shadow_frame.pack(fill=tk.X, pady=(0, 13))
+        self.shadow_frame = tk.Frame(self.content_frame, bg="#e0e0e0", height=2)
+        self.shadow_frame.grid(row=1, column=0, sticky="ew", padx=(0, 10), pady=(0, 13))
         
         self._build_controls(self.control_frame)
 
-        # Logging panel with modern design
-        self.log_frame = tk.Frame(self.main_container, bg="white", relief="flat", bd=0)
-        self.log_frame.pack(fill=tk.BOTH, expand=True)
+        # Logging panel with modern design (right side)
+        self.log_frame = tk.Frame(self.content_frame, bg="white", relief="flat", bd=0)
+        self.log_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
         
         # Add shadow for log panel
-        self.log_shadow = tk.Frame(self.main_container, bg="#e0e0e0", height=2)
-        self.log_shadow.pack(fill=tk.X, pady=(0, 13))
+        self.log_shadow = tk.Frame(self.content_frame, bg="#e0e0e0", height=2)
+        self.log_shadow.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=(0, 13))
         
         self._build_log(self.log_frame)
 
@@ -111,7 +117,8 @@ class CaptchaApp:
                                  fg="#34495e", bg="white")
         username_label.grid(row=1, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
         
-        self.username_var = tk.StringVar(value="quancaidu")
+        self.username_var = tk.StringVar()
+        self.username_var.set("quancaidu")
         username_entry = ttk.Entry(form_frame, textvariable=self.username_var, 
                                   width=30, font=("Segoe UI", 10))
         username_entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
@@ -634,11 +641,11 @@ def main() -> None:
                 break
         
         # Customize ttk styles for modern look
-        style.configure("TCombobox", fieldbackground="white", borderwidth=1)
-        style.configure("TEntry", fieldbackground="white", borderwidth=1)
-        style.configure("TButton", padding=(10, 5))
-        style.configure("Accent.TButton", padding=(12, 6))
-        style.configure("Secondary.TButton", padding=(10, 5))
+        style.configure("TCombobox", fieldbackground="white", borderwidth=1, font=("Segoe UI", 10))
+        style.configure("TEntry", fieldbackground="white", borderwidth=1, font=("Segoe UI", 10))
+        style.configure("TButton", padding=(10, 5), font=("Segoe UI", 10))
+        style.configure("Accent.TButton", padding=(12, 6), font=("Segoe UI", 10, "bold"))
+        style.configure("Secondary.TButton", padding=(10, 5), font=("Segoe UI", 10))
         style.configure("TCheckbutton", font=("Segoe UI", 10))
         
     except Exception:
