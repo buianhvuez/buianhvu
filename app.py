@@ -24,8 +24,9 @@ class CaptchaApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Audio Captcha Helper")
-        self.root.geometry("980x640")
-        self.root.minsize(800, 520)
+        self.root.geometry("720x520")
+        self.root.minsize(680, 480)
+        self.root.configure(bg="#f0f2f5")
 
         # State
         self.worker_thread: threading.Thread | None = None
@@ -33,164 +34,181 @@ class CaptchaApp:
         self.bg_pil_image = None  # type: ignore[assignment]
         self.bg_tk_image = None
 
-        # Layers: background canvas + overlay UI
-        self.background_canvas = tk.Canvas(self.root, highlightthickness=0, bd=0)
-        self.background_canvas.pack(fill=tk.BOTH, expand=True)
+        # Main container with padding
+        self.main_container = tk.Frame(self.root, bg="#f0f2f5")
+        self.main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        self.overlay = tk.Frame(self.root, bg="", highlightthickness=0)
-        self.overlay.place(relx=0.5, rely=0.5, anchor="center")
+        # Control panel with modern card design
+        self.control_frame = tk.Frame(self.main_container, bg="white", relief="flat", bd=0)
+        self.control_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # Add subtle shadow effect
+        self.shadow_frame = tk.Frame(self.main_container, bg="#e0e0e0", height=2)
+        self.shadow_frame.pack(fill=tk.X, pady=(0, 13))
+        
+        self._build_controls(self.control_frame)
 
-        self._build_controls(self.overlay)
-
-        # Logging panel attached to root, sits on top of canvas at bottom
-        self.log_frame = ttk.Frame(self.root)
-        self.log_frame.place(relx=0.5, rely=0.98, anchor="s", relwidth=0.92, relheight=0.36)
+        # Logging panel with modern design
+        self.log_frame = tk.Frame(self.main_container, bg="white", relief="flat", bd=0)
+        self.log_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Add shadow for log panel
+        self.log_shadow = tk.Frame(self.main_container, bg="#e0e0e0", height=2)
+        self.log_shadow.pack(fill=tk.X, pady=(0, 13))
+        
         self._build_log(self.log_frame)
-
-        # Redraw on resize
-        self.root.bind("<Configure>", self._on_resize)
-        self._draw_background()
 
         # Close handler
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_controls(self, parent: tk.Widget) -> None:
-        card = ttk.Frame(parent)
-        card.grid_columnconfigure(1, weight=1)
+        # Header section
+        header_frame = tk.Frame(parent, bg="white")
+        header_frame.pack(fill=tk.X, padx=20, pady=(20, 15))
+        
+        title = tk.Label(header_frame, text="Audio Captcha Helper", 
+                        font=("Segoe UI", 20, "bold"), 
+                        fg="#2c3e50", bg="white")
+        title.pack(anchor="w")
+        
+        subtitle = tk.Label(header_frame, text="Tự động hóa quy trình captcha audio", 
+                           font=("Segoe UI", 11), 
+                           fg="#7f8c8d", bg="white")
+        subtitle.pack(anchor="w", pady=(2, 0))
 
-        title = ttk.Label(card, text="Audio Captcha Helper", font=("Segoe UI", 18, "bold"))
-        subtitle = ttk.Label(card, text="Thêm background UI + chạy quy trình captcha", font=("Segoe UI", 10))
+        # Main form with grid layout
+        form_frame = tk.Frame(parent, bg="white")
+        form_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
+        form_frame.grid_columnconfigure(1, weight=1)
 
-        site_label = ttk.Label(card, text="Trang:")
+        # Row 1: Site selection
+        site_label = tk.Label(form_frame, text="Trang web:", 
+                             font=("Segoe UI", 10, "bold"), 
+                             fg="#34495e", bg="white")
+        site_label.grid(row=0, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
+        
         self.site_var = tk.StringVar(value="mmoocode.shop")
         site_combo = ttk.Combobox(
-            card,
+            form_frame,
             textvariable=self.site_var,
             values=[
                 "mmoocode.shop",
-                "go99code.store",
+                "go99code.store", 
                 "tt88code.win",
                 "nohucode.shop",
                 "789pcode.store",
                 "link1.789pcode.win",
             ],
             state="readonly",
-            width=18,
+            width=25,
+            font=("Segoe UI", 10)
         )
+        site_combo.grid(row=0, column=1, sticky="ew", pady=(0, 8))
 
-        username_label = ttk.Label(card, text="Tên tài khoản:")
+        # Row 2: Username
+        username_label = tk.Label(form_frame, text="Tên tài khoản:", 
+                                 font=("Segoe UI", 10, "bold"), 
+                                 fg="#34495e", bg="white")
+        username_label.grid(row=1, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
+        
         self.username_var = tk.StringVar(value="quancaidu")
-        username_entry = ttk.Entry(card, textvariable=self.username_var, width=30)
+        username_entry = ttk.Entry(form_frame, textvariable=self.username_var, 
+                                  width=30, font=("Segoe UI", 10))
+        username_entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
 
-        lang_label = ttk.Label(card, text="Ngôn ngữ nhận dạng:")
+        # Row 3: Language and Promo code
+        lang_label = tk.Label(form_frame, text="Ngôn ngữ:", 
+                             font=("Segoe UI", 10, "bold"), 
+                             fg="#34495e", bg="white")
+        lang_label.grid(row=2, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
+        
         self.lang_var = tk.StringVar(value="vi-VN")
-        lang_combo = ttk.Combobox(card, textvariable=self.lang_var, values=[
-            "vi-VN", "en-US", "en-GB", "th-TH", "id-ID"
-        ], state="readonly", width=12)
+        lang_combo = ttk.Combobox(form_frame, textvariable=self.lang_var, 
+                                 values=["vi-VN", "en-US", "en-GB", "th-TH", "id-ID"],
+                                 state="readonly", width=15, font=("Segoe UI", 10))
+        lang_combo.grid(row=2, column=1, sticky="w", pady=(0, 8))
 
-        promo_label = ttk.Label(card, text="Mã khuyến mãi:")
+        promo_label = tk.Label(form_frame, text="Mã khuyến mãi:", 
+                              font=("Segoe UI", 10, "bold"), 
+                              fg="#34495e", bg="white")
+        promo_label.grid(row=3, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
+        
         self.promo_var = tk.StringVar(value="TAIAPP")
-        promo_entry = ttk.Entry(card, textvariable=self.promo_var, width=20)
+        promo_entry = ttk.Entry(form_frame, textvariable=self.promo_var, 
+                               width=20, font=("Segoe UI", 10))
+        promo_entry.grid(row=3, column=1, sticky="w", pady=(0, 8))
 
-        self.run_both_var = tk.BooleanVar(value=False)
-        run_both_chk = ttk.Checkbutton(card, text="Chạy tất cả trang", variable=self.run_both_var)
-
-        # Proxy input
-        proxy_label = ttk.Label(card, text="Proxy (http(s)://user:pass@host:port):")
+        # Row 4: Proxy
+        proxy_label = tk.Label(form_frame, text="Proxy (tùy chọn):", 
+                              font=("Segoe UI", 10, "bold"), 
+                              fg="#34495e", bg="white")
+        proxy_label.grid(row=4, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
+        
         self.proxy_var = tk.StringVar(value="")
-        proxy_entry = ttk.Entry(card, textvariable=self.proxy_var, width=36)
+        proxy_entry = ttk.Entry(form_frame, textvariable=self.proxy_var, 
+                               width=40, font=("Segoe UI", 10))
+        proxy_entry.grid(row=4, column=1, sticky="ew", pady=(0, 8))
 
-        bg_btn = ttk.Button(card, text="Chọn ảnh nền…", command=self._select_bg_image)
-        self.start_btn = ttk.Button(card, text="Bắt đầu", command=self._start)
-        self.stop_btn = ttk.Button(card, text="Dừng", command=self._stop, state=tk.DISABLED)
+        # Row 5: Options and buttons
+        options_frame = tk.Frame(form_frame, bg="white")
+        options_frame.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        
+        self.run_both_var = tk.BooleanVar(value=False)
+        run_both_chk = ttk.Checkbutton(options_frame, text="Chạy tất cả trang", 
+                                       variable=self.run_both_var, font=("Segoe UI", 10))
+        run_both_chk.pack(side=tk.LEFT)
 
-        # Layout
-        title.grid(row=0, column=0, columnspan=3, sticky="w")
-        subtitle.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 12))
-
-        site_label.grid(row=2, column=0, sticky="w", padx=(0, 8))
-        site_combo.grid(row=2, column=1, sticky="w", pady=4)
-
-        username_label.grid(row=3, column=0, sticky="w", padx=(0, 8))
-        username_entry.grid(row=3, column=1, sticky="ew", pady=4)
-
-        lang_label.grid(row=4, column=0, sticky="w", padx=(0, 8))
-        lang_combo.grid(row=4, column=1, sticky="w", pady=4)
-
-        promo_label.grid(row=5, column=0, sticky="w", padx=(0, 8))
-        promo_entry.grid(row=5, column=1, sticky="w", pady=4)
-
-        bg_btn.grid(row=6, column=0, sticky="w", pady=(12, 0))
-        self.start_btn.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
-        self.stop_btn.grid(row=6, column=2, sticky="w", padx=(8, 0), pady=(12, 0))
-        run_both_chk.grid(row=7, column=0, sticky="w", pady=(4, 0))
-        proxy_label.grid(row=8, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
-        proxy_entry.grid(row=8, column=1, sticky="ew", pady=(8, 0))
-
-        # A little padding
-        for child in card.winfo_children():
-            if isinstance(child, ttk.Entry) or isinstance(child, ttk.Combobox):
-                child.configure()
-        card.configure(padding=16)
-        card.pack(fill=tk.X)
+        # Button frame
+        button_frame = tk.Frame(form_frame, bg="white")
+        button_frame.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(15, 0))
+        
+        # Style buttons
+        style = ttk.Style()
+        style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
+        style.configure("Secondary.TButton", font=("Segoe UI", 10))
+        
+        bg_btn = ttk.Button(button_frame, text="Chọn ảnh nền", 
+                           command=self._select_bg_image, style="Secondary.TButton")
+        bg_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.start_btn = ttk.Button(button_frame, text="Bắt đầu", 
+                                   command=self._start, style="Accent.TButton")
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.stop_btn = ttk.Button(button_frame, text="Dừng", 
+                                  command=self._stop, state=tk.DISABLED, style="Secondary.TButton")
+        self.stop_btn.pack(side=tk.LEFT)
 
     def _build_log(self, parent: tk.Widget) -> None:
-        parent.grid_columnconfigure(0, weight=1)
-        parent.grid_rowconfigure(0, weight=1)
+        # Header
+        header_frame = tk.Frame(parent, bg="white")
+        header_frame.pack(fill=tk.X, padx=20, pady=(15, 10))
+        
+        label = tk.Label(header_frame, text="Nhật ký hoạt động", 
+                        font=("Segoe UI", 12, "bold"), 
+                        fg="#2c3e50", bg="white")
+        label.pack(anchor="w")
 
-        label = ttk.Label(parent, text="Nhật ký hoạt động")
-        label.grid(row=0, column=0, sticky="w")
+        # Text area with scrollbar
+        text_frame = tk.Frame(parent, bg="white")
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+        text_frame.grid_columnconfigure(0, weight=1)
+        text_frame.grid_rowconfigure(0, weight=1)
 
-        self.log_text = tk.Text(parent, height=12, wrap=tk.WORD, state=tk.DISABLED, font=("Consolas", 10))
-        yscroll = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.log_text.yview)
+        self.log_text = tk.Text(text_frame, height=8, wrap=tk.WORD, state=tk.DISABLED, 
+                               font=("Consolas", 9), bg="#f8f9fa", fg="#2c3e50",
+                               relief="flat", bd=0, padx=10, pady=8)
+        yscroll = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=yscroll.set)
 
-        self.log_text.grid(row=1, column=0, sticky="nsew")
-        yscroll.grid(row=1, column=1, sticky="ns")
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        yscroll.grid(row=0, column=1, sticky="ns")
 
-    # Background drawing
-    def _on_resize(self, event: tk.Event) -> None:  # type: ignore[override]
-        if event.widget is self.root:
-            self._draw_background()
-
+    # Background drawing (simplified for modern design)
     def _draw_background(self) -> None:
-        w = self.root.winfo_width()
-        h = self.root.winfo_height()
-        if w <= 1 or h <= 1:
-            return
-
-        self.background_canvas.delete("all")
-        self.background_canvas.configure(width=w, height=h)
-
-        if self.bg_pil_image is not None and PIL_AVAILABLE:
-            # Scale the image to cover the window (maintain aspect ratio)
-            img_w, img_h = self.bg_pil_image.size
-            if img_w == 0 or img_h == 0:
-                return
-            scale = max(w / img_w, h / img_h)
-            new_w = max(1, int(img_w * scale))
-            new_h = max(1, int(img_h * scale))
-            resized = self.bg_pil_image.resize((new_w, new_h), Image.LANCZOS)
-            self.bg_tk_image = ImageTk.PhotoImage(resized)
-            # Centered image
-            x = (w - new_w) // 2
-            y = (h - new_h) // 2
-            self.background_canvas.create_image(x, y, anchor="nw", image=self.bg_tk_image)
-        else:
-            # Gradient fallback (blue -> purple)
-            steps = 64
-            for i in range(steps):
-                r = int(40 + (110 - 40) * (i / steps))
-                g = int(70 + (40 - 70) * (i / steps))
-                b = int(180 + (200 - 180) * (i / steps))
-                color = f"#{r:02x}{g:02x}{b:02x}"
-                y0 = int(h * i / steps)
-                y1 = int(h * (i + 1) / steps)
-                self.background_canvas.create_rectangle(0, y0, w, y1, outline="", fill=color)
-
-        # So overlay remains centered after resize
-        self.overlay.lift()
-        self.log_frame.lift()
+        # Background is now handled by the main container's bg color
+        # This method is kept for compatibility but simplified
+        pass
 
     def _select_bg_image(self) -> None:
         if not PIL_AVAILABLE:
@@ -209,10 +227,34 @@ class CaptchaApp:
         try:
             img = Image.open(path).convert("RGB")
             self.bg_pil_image = img
-            self._draw_background()
+            # Apply background image to main container
+            self._apply_background_image()
             self._log(f"Đã đặt ảnh nền: {os.path.basename(path)}")
         except Exception as exc:
             messagebox.showerror("Lỗi ảnh nền", f"Không thể mở ảnh: {exc}")
+
+    def _apply_background_image(self) -> None:
+        """Apply background image to the main container"""
+        if self.bg_pil_image is not None and PIL_AVAILABLE:
+            # Create a subtle background effect
+            w = self.main_container.winfo_width()
+            h = self.main_container.winfo_height()
+            if w > 1 and h > 1:
+                # Resize image to fit container with opacity effect
+                img_w, img_h = self.bg_pil_image.size
+                if img_w > 0 and img_h > 0:
+                    # Scale to fit container
+                    scale = min(w / img_w, h / img_h)
+                    new_w = max(1, int(img_w * scale))
+                    new_h = max(1, int(img_h * scale))
+                    resized = self.bg_pil_image.resize((new_w, new_h), Image.LANCZOS)
+                    
+                    # Apply subtle opacity (make it more transparent)
+                    resized.putalpha(30)  # Very subtle background
+                    
+                    self.bg_tk_image = ImageTk.PhotoImage(resized)
+                    # Apply as background to main container
+                    self.main_container.configure(bg="#f0f2f5")  # Keep light background
 
     # Logging utilities (thread-safe)
     def _log(self, message: str) -> None:
@@ -581,17 +623,29 @@ class CaptchaApp:
 
 def main() -> None:
     root = tk.Tk()
-    # Use ttk themes
+    
+    # Configure modern styling
     try:
         style = ttk.Style(root)
-        # Prefer a modern theme if available
+        # Use a modern theme
         for theme in ("vista", "clam", "alt", "default"):
             if theme in style.theme_names():
                 style.theme_use(theme)
                 break
+        
+        # Customize ttk styles for modern look
+        style.configure("TCombobox", fieldbackground="white", borderwidth=1)
+        style.configure("TEntry", fieldbackground="white", borderwidth=1)
+        style.configure("TButton", padding=(10, 5))
+        style.configure("Accent.TButton", padding=(12, 6))
+        style.configure("Secondary.TButton", padding=(10, 5))
+        
     except Exception:
         pass
 
+    # Set window icon and properties
+    root.resizable(True, True)
+    
     app = CaptchaApp(root)
     root.mainloop()
 
