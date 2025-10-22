@@ -155,7 +155,7 @@ class CaptchaApp:
         
         self.run_both_var = tk.BooleanVar(value=False)
         run_both_chk = ttk.Checkbutton(options_frame, text="Chạy tất cả trang", 
-                                       variable=self.run_both_var, font=("Segoe UI", 10))
+                                       variable=self.run_both_var)
         run_both_chk.pack(side=tk.LEFT)
 
         # Button frame
@@ -639,6 +639,7 @@ def main() -> None:
         style.configure("TButton", padding=(10, 5))
         style.configure("Accent.TButton", padding=(12, 6))
         style.configure("Secondary.TButton", padding=(10, 5))
+        style.configure("TCheckbutton", font=("Segoe UI", 10))
         
     except Exception:
         pass
