@@ -10,14 +10,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from urllib.parse import urljoin, urlparse
 
-# Optional Pillow import for background images
-try:
-    from PIL import Image, ImageTk  # type: ignore
-    PIL_AVAILABLE = True
-except Exception:
-    PIL_AVAILABLE = False
-    Image = None  # type: ignore
-    ImageTk = None  # type: ignore
 
 
 class CaptchaApp:
@@ -31,8 +23,6 @@ class CaptchaApp:
         # State
         self.worker_thread: threading.Thread | None = None
         self.stop_event = threading.Event()
-        self.bg_pil_image = None  # type: ignore[assignment]
-        self.bg_tk_image = None
 
         # Main container with padding
         self.main_container = tk.Frame(self.root, bg="#f0f2f5")
@@ -174,10 +164,6 @@ class CaptchaApp:
         style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
         style.configure("Secondary.TButton", font=("Segoe UI", 10))
         
-        bg_btn = ttk.Button(button_frame, text="Chọn ảnh nền", 
-                           command=self._select_bg_image, style="Secondary.TButton")
-        bg_btn.pack(side=tk.LEFT, padx=(0, 10))
-        
         self.start_btn = ttk.Button(button_frame, text="Bắt đầu", 
                                    command=self._start, style="Accent.TButton")
         self.start_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -211,57 +197,6 @@ class CaptchaApp:
         self.log_text.grid(row=0, column=0, sticky="nsew")
         yscroll.grid(row=0, column=1, sticky="ns")
 
-    # Background drawing (simplified for modern design)
-    def _draw_background(self) -> None:
-        # Background is now handled by the main container's bg color
-        # This method is kept for compatibility but simplified
-        pass
-
-    def _select_bg_image(self) -> None:
-        if not PIL_AVAILABLE:
-            messagebox.showwarning(
-                "Thiếu phụ thuộc",
-                "Pillow (PIL) chưa được cài đặt. Hãy cài đặt bằng: pip install pillow",
-            )
-            return
-        filetypes = [
-            ("Image files", "*.png *.jpg *.jpeg *.webp *.gif"),
-            ("All files", "*.*"),
-        ]
-        path = filedialog.askopenfilename(title="Chọn ảnh nền", filetypes=filetypes)
-        if not path:
-            return
-        try:
-            img = Image.open(path).convert("RGB")
-            self.bg_pil_image = img
-            # Apply background image to main container
-            self._apply_background_image()
-            self._log(f"Đã đặt ảnh nền: {os.path.basename(path)}")
-        except Exception as exc:
-            messagebox.showerror("Lỗi ảnh nền", f"Không thể mở ảnh: {exc}")
-
-    def _apply_background_image(self) -> None:
-        """Apply background image to the main container"""
-        if self.bg_pil_image is not None and PIL_AVAILABLE:
-            # Create a subtle background effect
-            w = self.main_container.winfo_width()
-            h = self.main_container.winfo_height()
-            if w > 1 and h > 1:
-                # Resize image to fit container with opacity effect
-                img_w, img_h = self.bg_pil_image.size
-                if img_w > 0 and img_h > 0:
-                    # Scale to fit container
-                    scale = min(w / img_w, h / img_h)
-                    new_w = max(1, int(img_w * scale))
-                    new_h = max(1, int(img_h * scale))
-                    resized = self.bg_pil_image.resize((new_w, new_h), Image.LANCZOS)
-                    
-                    # Apply subtle opacity (make it more transparent)
-                    resized.putalpha(30)  # Very subtle background
-                    
-                    self.bg_tk_image = ImageTk.PhotoImage(resized)
-                    # Apply as background to main container
-                    self.main_container.configure(bg="#f0f2f5")  # Keep light background
 
     # Logging utilities (thread-safe)
     def _log(self, message: str) -> None:
