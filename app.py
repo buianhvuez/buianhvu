@@ -10,14 +10,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from urllib.parse import urljoin, urlparse
 
-# Optional Pillow import for background images
-try:
-    from PIL import Image, ImageTk  # type: ignore
-    PIL_AVAILABLE = True
-except Exception:
-    PIL_AVAILABLE = False
-    Image = None  # type: ignore
-    ImageTk = None  # type: ignore
 
 
 class CaptchaApp:
@@ -31,30 +23,34 @@ class CaptchaApp:
         # State
         self.worker_thread: threading.Thread | None = None
         self.stop_event = threading.Event()
-        self.bg_pil_image = None  # type: ignore[assignment]
-        self.bg_tk_image = None
 
         # Main container with padding
         self.main_container = tk.Frame(self.root, bg="#f0f2f5")
         self.main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        # Control panel with modern card design
-        self.control_frame = tk.Frame(self.main_container, bg="white", relief="flat", bd=0)
-        self.control_frame.pack(fill=tk.X, pady=(0, 15))
+        # Create horizontal layout container
+        self.content_frame = tk.Frame(self.main_container, bg="#f0f2f5")
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
+        self.content_frame.grid_columnconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(1, weight=2)
+
+        # Control panel with modern card design (left side)
+        self.control_frame = tk.Frame(self.content_frame, bg="white", relief="flat", bd=0)
+        self.control_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 15))
         
         # Add subtle shadow effect
-        self.shadow_frame = tk.Frame(self.main_container, bg="#e0e0e0", height=2)
-        self.shadow_frame.pack(fill=tk.X, pady=(0, 13))
+        self.shadow_frame = tk.Frame(self.content_frame, bg="#e0e0e0", height=2)
+        self.shadow_frame.grid(row=1, column=0, sticky="ew", padx=(0, 15), pady=(0, 13))
         
         self._build_controls(self.control_frame)
 
-        # Logging panel with modern design
-        self.log_frame = tk.Frame(self.main_container, bg="white", relief="flat", bd=0)
-        self.log_frame.pack(fill=tk.BOTH, expand=True)
+        # Logging panel with modern design (right side)
+        self.log_frame = tk.Frame(self.content_frame, bg="white", relief="flat", bd=0)
+        self.log_frame.grid(row=0, column=1, sticky="nsew", padx=(15, 0))
         
         # Add shadow for log panel
-        self.log_shadow = tk.Frame(self.main_container, bg="#e0e0e0", height=2)
-        self.log_shadow.pack(fill=tk.X, pady=(0, 13))
+        self.log_shadow = tk.Frame(self.content_frame, bg="#e0e0e0", height=2)
+        self.log_shadow.grid(row=1, column=1, sticky="ew", padx=(15, 0), pady=(0, 13))
         
         self._build_log(self.log_frame)
 
@@ -111,7 +107,8 @@ class CaptchaApp:
                                  fg="#34495e", bg="white")
         username_label.grid(row=1, column=0, sticky="w", padx=(0, 15), pady=(0, 8))
         
-        self.username_var = tk.StringVar(value="quancaidu")
+        self.username_var = tk.StringVar()
+        self.username_var.set("quancaidu")
         username_entry = ttk.Entry(form_frame, textvariable=self.username_var, 
                                   width=30, font=("Segoe UI", 10))
         username_entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
@@ -155,7 +152,7 @@ class CaptchaApp:
         
         self.run_both_var = tk.BooleanVar(value=False)
         run_both_chk = ttk.Checkbutton(options_frame, text="Chạy tất cả trang", 
-                                       variable=self.run_both_var, font=("Segoe UI", 10))
+                                       variable=self.run_both_var)
         run_both_chk.pack(side=tk.LEFT)
 
         # Button frame
@@ -166,10 +163,6 @@ class CaptchaApp:
         style = ttk.Style()
         style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
         style.configure("Secondary.TButton", font=("Segoe UI", 10))
-        
-        bg_btn = ttk.Button(button_frame, text="Chọn ảnh nền", 
-                           command=self._select_bg_image, style="Secondary.TButton")
-        bg_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         self.start_btn = ttk.Button(button_frame, text="Bắt đầu", 
                                    command=self._start, style="Accent.TButton")
@@ -204,57 +197,6 @@ class CaptchaApp:
         self.log_text.grid(row=0, column=0, sticky="nsew")
         yscroll.grid(row=0, column=1, sticky="ns")
 
-    # Background drawing (simplified for modern design)
-    def _draw_background(self) -> None:
-        # Background is now handled by the main container's bg color
-        # This method is kept for compatibility but simplified
-        pass
-
-    def _select_bg_image(self) -> None:
-        if not PIL_AVAILABLE:
-            messagebox.showwarning(
-                "Thiếu phụ thuộc",
-                "Pillow (PIL) chưa được cài đặt. Hãy cài đặt bằng: pip install pillow",
-            )
-            return
-        filetypes = [
-            ("Image files", "*.png *.jpg *.jpeg *.webp *.gif"),
-            ("All files", "*.*"),
-        ]
-        path = filedialog.askopenfilename(title="Chọn ảnh nền", filetypes=filetypes)
-        if not path:
-            return
-        try:
-            img = Image.open(path).convert("RGB")
-            self.bg_pil_image = img
-            # Apply background image to main container
-            self._apply_background_image()
-            self._log(f"Đã đặt ảnh nền: {os.path.basename(path)}")
-        except Exception as exc:
-            messagebox.showerror("Lỗi ảnh nền", f"Không thể mở ảnh: {exc}")
-
-    def _apply_background_image(self) -> None:
-        """Apply background image to the main container"""
-        if self.bg_pil_image is not None and PIL_AVAILABLE:
-            # Create a subtle background effect
-            w = self.main_container.winfo_width()
-            h = self.main_container.winfo_height()
-            if w > 1 and h > 1:
-                # Resize image to fit container with opacity effect
-                img_w, img_h = self.bg_pil_image.size
-                if img_w > 0 and img_h > 0:
-                    # Scale to fit container
-                    scale = min(w / img_w, h / img_h)
-                    new_w = max(1, int(img_w * scale))
-                    new_h = max(1, int(img_h * scale))
-                    resized = self.bg_pil_image.resize((new_w, new_h), Image.LANCZOS)
-                    
-                    # Apply subtle opacity (make it more transparent)
-                    resized.putalpha(30)  # Very subtle background
-                    
-                    self.bg_tk_image = ImageTk.PhotoImage(resized)
-                    # Apply as background to main container
-                    self.main_container.configure(bg="#f0f2f5")  # Keep light background
 
     # Logging utilities (thread-safe)
     def _log(self, message: str) -> None:
@@ -408,10 +350,32 @@ class CaptchaApp:
                 client = requests.Session()
                 # Apply proxies if provided
                 if proxy_url:
-                    proxies = {"http": proxy_url, "https": proxy_url}
                     try:
-                        client.proxies.update(proxies)
-                        self._log(f"Đang sử dụng proxy cho {domain}")
+                        # Parse proxy format: ip:port:username:password
+                        if ":" in proxy_url:
+                            parts = proxy_url.split(":")
+                            if len(parts) >= 2:
+                                ip = parts[0]
+                                port = parts[1]
+                                if len(parts) >= 4:
+                                    # Format: ip:port:username:password
+                                    username = parts[2]
+                                    password = parts[3]
+                                    proxy_url_formatted = f"http://{username}:{password}@{ip}:{port}"
+                                else:
+                                    # Format: ip:port
+                                    proxy_url_formatted = f"http://{ip}:{port}"
+                                
+                                proxies = {"http": proxy_url_formatted, "https": proxy_url_formatted}
+                                client.proxies.update(proxies)
+                                self._log(f"Đang sử dụng proxy cho {domain}: {ip}:{port}")
+                            else:
+                                self._log(f"Format proxy không hợp lệ: {proxy_url}")
+                        else:
+                            # Assume it's already in correct format
+                            proxies = {"http": proxy_url, "https": proxy_url}
+                            client.proxies.update(proxies)
+                            self._log(f"Đang sử dụng proxy cho {domain}")
                     except Exception as px:
                         self._log(f"Không áp dụng được proxy: {px}")
                 client.headers.update({
@@ -634,11 +598,12 @@ def main() -> None:
                 break
         
         # Customize ttk styles for modern look
-        style.configure("TCombobox", fieldbackground="white", borderwidth=1)
-        style.configure("TEntry", fieldbackground="white", borderwidth=1)
-        style.configure("TButton", padding=(10, 5))
-        style.configure("Accent.TButton", padding=(12, 6))
-        style.configure("Secondary.TButton", padding=(10, 5))
+        style.configure("TCombobox", fieldbackground="white", borderwidth=1, font=("Segoe UI", 10))
+        style.configure("TEntry", fieldbackground="white", borderwidth=1, font=("Segoe UI", 10))
+        style.configure("TButton", padding=(10, 5), font=("Segoe UI", 10))
+        style.configure("Accent.TButton", padding=(12, 6), font=("Segoe UI", 10, "bold"))
+        style.configure("Secondary.TButton", padding=(10, 5), font=("Segoe UI", 10))
+        style.configure("TCheckbutton", font=("Segoe UI", 10))
         
     except Exception:
         pass
